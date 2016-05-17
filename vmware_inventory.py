@@ -4,10 +4,7 @@
 #   * unit tests
 #   * docstrings in all functions
 #   * more jq examples
-#   * finish caching
-#   * create groups + user templates
-#   * user defined object filters
-#       - state: poweredon
+#   * create user defined groupby
 
 """
 $ jq '._meta.hostvars[].config' data.json | head
@@ -60,6 +57,7 @@ class VMWareInventory(object):
     port = None
     username = None
     password = None
+    host_filters = []
 
 
     def _empty_inventory(self):
@@ -89,20 +87,21 @@ class VMWareInventory(object):
             # Display list of instances for inventory
             data_to_print = self.inventory
         print(json.dumps(data_to_print, indent=2))
-        print("CACHE_VALID: %s" % cache_valid)
 
 
     def is_cache_valid(self):
 
         ''' Determines if the cache files have expired, or if it is still valid '''
 
+        valid = False
+
         if os.path.isfile(self.cache_path_cache):
             mod_time = os.path.getmtime(self.cache_path_cache)
             current_time = time()
             if (mod_time + self.cache_max_age) > current_time:
-                return True
+                valid = True
 
-        return False
+        return valid
 
 
     def do_api_calls_update_cache(self):
@@ -147,6 +146,7 @@ class VMWareInventory(object):
                         'max_object_level': 0,
                         'alias_pattern': '{{ config.name }}',
                         'host_pattern': '{{ guest.ipaddress }}',
+                        'host_filters': '{{ guest.gueststate == "running" }}',
                         'lower_var_keys': True }
 		   }
 
@@ -182,6 +182,7 @@ class VMWareInventory(object):
 	# behavior control
 	self.maxlevel = int(config.get('vmware', 'max_object_level'))
     	self.lowerkeys = bool(config.get('vmware', 'lower_var_keys'))
+        self.host_filters = list(config.get('vmware', 'host_filters').split(','))
 
         self.config = config    
 
@@ -280,10 +281,20 @@ class VMWareInventory(object):
             inventory['all']['hosts'].remove(k)
             inventory['_meta']['hostvars'].pop(k, None)
 
+        # Apply host filters
+        print(self.host_filters)
+        for hf in self.host_filters:
+            filter_map = self.create_template_mapping(inventory, hf, dtype='boolean')
+            for k,v in filter_map.iteritems():
+                if not v:
+                    # delete this host
+                    inventory['all']['hosts'].remove(k)
+                    inventory['_meta']['hostvars'].pop(k, None)
+
 	return inventory
 
 
-    def create_template_mapping(self, inventory, pattern):
+    def create_template_mapping(self, inventory, pattern, dtype='string'):
 
         ''' Return a hash of uuid to templated string from pattern '''
 
@@ -292,6 +303,15 @@ class VMWareInventory(object):
             t = jinja2.Template(pattern)
             newkey = t.render(v)
             newkey = newkey.strip()
+            if dtype == 'integer':
+                newkey = int(newkey)
+            elif dtype == 'boolean':
+                if newkey.lower() == 'false':
+                    newkey = False
+                elif newkey.lower() == 'true':
+                    newkey = True    
+            elif dtype == 'string':
+                pass        
             mapping[k] = newkey
         return mapping
 
