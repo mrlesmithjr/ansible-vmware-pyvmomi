@@ -157,6 +157,7 @@ class VMWareInventory(object):
         else:
             config = configparser.SafeConfigParser()
 
+        # where is the config?
         vmware_ini_path = os.environ.get('VMWARE_INI_PATH', defaults['vmware']['ini_path'])
         vmware_ini_path = os.path.expanduser(os.path.expandvars(vmware_ini_path))
         config.read(vmware_ini_path)
@@ -166,13 +167,14 @@ class VMWareInventory(object):
 	    if not config.has_option('vmware', k):
                 config.set('vmware', k, str(v))
 
+        # where is the cache?
         self.cache_dir = os.path.expanduser(config.get('vmware', 'cache_path'))
         if self.cache_dir and not os.path.exists(self.cache_dir):
             os.makedirs(self.cache_dir)
 
+        # set the cache filename and max age
 	cache_name = config.get('vmware', 'cache_name')
         self.cache_path_cache = self.cache_dir + "/%s.cache" % cache_name
-        self.cache_path_index = self.cache_dir + "/%s.index" % cache_name
         self.cache_max_age = int(config.getint('vmware', 'cache_max_age'))
 
 	# mark the connection info 
@@ -187,6 +189,7 @@ class VMWareInventory(object):
         self.host_filters = list(config.get('vmware', 'host_filters').split(','))
         self.groupby_patterns = list(config.get('vmware', 'groupby_patterns').split(','))
 
+        # save the config
         self.config = config    
 
 
