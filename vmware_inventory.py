@@ -1,26 +1,20 @@
 #!/usr/bin/env python
-# VMware vSphere Python SDK
-# Copyright (c) 2008-2015 VMware, Inc. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 """
-Python program for listing the vms on an ESX / vCenter host
+$ jq '._meta.hostvars[].config' data.json | head
+{
+  "alternateguestname": "",
+  "instanceuuid": "5035a5cd-b8e8-d717-e133-2d383eb0d675",
+  "memoryhotaddenabled": false,
+  "guestfullname": "Red Hat Enterprise Linux 7 (64-bit)",
+  "changeversion": "2016-05-16T18:43:14.977925Z",
+  "uuid": "4235fc97-5ddb-7a17-193b-9a3ac97dc7b4",
+  "cpuhotremoveenabled": false,
+  "vpmcenabled": false,
+  "firmware": "bios",
 """
 
 from __future__ import print_function
-
-from pyVim.connect import SmartConnect, Disconnect
 
 import argparse
 import atexit
@@ -29,6 +23,7 @@ import os
 import six
 import ssl
 
+from pyVim.connect import SmartConnect, Disconnect
 from six.moves import configparser
 from collections import defaultdict
 
@@ -43,6 +38,7 @@ class VMWareInventory(object):
     __name__ = 'VMWareInventory'
 
     maxlevel = 1
+    lowerkeys = True
     config = None
     cache_max_age = None
     cache_path_cache = None
@@ -115,29 +111,54 @@ class VMWareInventory(object):
 
     def read_settings(self):
         ''' Reads the settings from the vmware.ini file '''
+
+	defaults = {'vmware': {
+			'server': '',
+			'port': 443,
+			'username': '',
+			'password': '',
+			'ini_path': os.path.join(os.path.dirname(os.path.realpath(__file__)), 'vmware.ini'),
+			'cache_name': 'ansible-vmware',
+			'cache_path': '~/.ansible/tmp',
+			'cache_max_age': 300,
+                        'max_object_level': 0,
+                        'lower_var_keys': True }
+		   }
+
         if six.PY3:
             config = configparser.ConfigParser()
         else:
             config = configparser.SafeConfigParser()
-        self.config = config    
-        vmware_default_ini_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'vmware.ini')
-        vmware_ini_path = os.path.expanduser(os.path.expandvars(os.environ.get('VMWARE_INI_PATH', vmware_default_ini_path)))
+
+        vmware_ini_path = os.environ.get('VMWARE_INI_PATH', defaults['vmware']['ini_path'])
+        vmware_ini_path = os.path.expanduser(os.path.expandvars(vmware_ini_path))
         config.read(vmware_ini_path)
 
-	cache_name = 'ansible-vmware'
+	# apply defaults
+	for k,v in defaults['vmware'].iteritems():
+	    if not config.has_option('vmware', k):
+                config.set('vmware', k, str(v))
 
         self.cache_dir = os.path.expanduser(config.get('vmware', 'cache_path'))
         if self.cache_dir and not os.path.exists(self.cache_dir):
             os.makedirs(self.cache_dir)
+
+	cache_name = config.get('vmware', 'cache_name')
         self.cache_path_cache = self.cache_dir + "/%s.cache" % cache_name
         self.cache_path_index = self.cache_dir + "/%s.index" % cache_name
-        self.cache_max_age = config.getint('vmware', 'cache_max_age')
+        self.cache_max_age = int(config.getint('vmware', 'cache_max_age'))
 
+	# mark the connection info
         self.server = config.get('vmware', 'server')
-        self.port = config.get('vmware', 'port')
+        self.port = int(config.get('vmware', 'port'))
         self.username = config.get('vmware', 'username')
         self.password = config.get('vmware', 'password')
-        #import epdb; epdb.st()
+
+	# behavior control
+	self.maxlevel = int(config.get('vmware', 'max_object_level'))
+    	self.lowerkeys = bool(config.get('vmware', 'lower_var_keys'))
+
+        self.config = config    
 
 
     def parse_cli_args(self):
@@ -225,7 +246,8 @@ class VMWareInventory(object):
                 continue
 
             methodToCall = getattr(vobj, method)
-            method = method.lower()
+            if self.lowerkeys:
+                method = method.lower()
 
             # Store if type is a primitive
             if type(methodToCall) in safe_types:
@@ -252,8 +274,8 @@ class VMWareInventory(object):
                     if k.startswith('_'):
                         continue
 
-                    # Make all keys lower                        
-                    k = k.lower()
+                    if self.lowerkeys:
+                        k = k.lower()
 
                     if type(v) in safe_types:
                         safe_dict[k] = v    
@@ -272,7 +294,8 @@ class VMWareInventory(object):
                                 rdata[method] = {}
 
                             for vk, vv in vdata.iteritems():
-                                vk = vk.lower()
+                                if self.lowerkeys:
+                                    vk = vk.lower()
                                 if method not in rdata[method]:
                                      rdata[method][vk] = None
                                 if vk not in rdata[method]:
