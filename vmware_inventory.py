@@ -4,7 +4,6 @@
 #   * unit tests
 #   * docstrings in all functions
 #   * more jq examples
-#   * create user defined groupby
 #   * optional folder heirarchy 
 
 """
@@ -134,14 +133,14 @@ class VMWareInventory(object):
 
 
     def read_settings(self):
-        ''' Reads the settings from the vmware.ini file '''
+        ''' Reads the settings from the vmware_inventory.ini file '''
 
 	defaults = {'vmware': {
 			'server': '',
 			'port': 443,
 			'username': '',
 			'password': '',
-			'ini_path': os.path.join(os.path.dirname(os.path.realpath(__file__)), 'vmware.ini'),
+			'ini_path': os.path.join(os.path.dirname(os.path.realpath(__file__)), 'vmware_inventory.ini'),
 			'cache_name': 'ansible-vmware',
 			'cache_path': '~/.ansible/tmp',
 			'cache_max_age': 300,
@@ -177,11 +176,10 @@ class VMWareInventory(object):
         self.cache_max_age = int(config.getint('vmware', 'cache_max_age'))
 
 	# mark the connection info 
-        # FIXME - use environment vars ...
-        self.server = config.get('vmware', 'server')
-        self.port = int(config.get('vmware', 'port'))
-        self.username = config.get('vmware', 'username')
-        self.password = config.get('vmware', 'password')
+        self.server =  os.environ.get('VMWARE_SERVER', config.get('vmware', 'server'))
+        self.port = int(os.environ.get('VMWARE_PORT', config.get('vmware', 'port')))
+        self.username = os.environ.get('VMWARE_USERNAME', config.get('vmware', 'username'))
+        self.password = os.environ.get('VMWARE_PASSWORD', config.get('vmware', 'password'))
 
 	# behavior control
 	self.maxlevel = int(config.get('vmware', 'max_object_level'))
