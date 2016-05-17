@@ -40,6 +40,9 @@ except ImportError:
 
 class VMWareInventory(object):
 
+    __name__ = 'VMWareInventory'
+
+    maxlevel = 1
     config = None
     cache_max_age = None
     cache_path_cache = None
@@ -79,8 +82,7 @@ class VMWareInventory(object):
             if self.inventory == self._empty_inventory():
                 data_to_print = self.get_inventory_from_cache()
             else:
-                data_to_print = self.json_format_dict(self.inventory, True)
-
+                data_to_print = json.dumps(self.inventory, indent=2)
         print(data_to_print)
 
 
@@ -96,6 +98,8 @@ class VMWareInventory(object):
 
         return False
 
+    def write_to_cache(self, index, cache_path):
+        pass
 
     def do_api_calls_update_cache(self):
         instances = self.get_instances()
@@ -110,7 +114,7 @@ class VMWareInventory(object):
 
 
     def read_settings(self):
-        ''' Reads the settings from the ec2.ini file '''
+        ''' Reads the settings from the vmware.ini file '''
         if six.PY3:
             config = configparser.ConfigParser()
         else:
@@ -186,120 +190,105 @@ class VMWareInventory(object):
         inventory['all'] = {}
         inventory['all']['hosts'] = []
         for instance in instances:
-            print(instance)
 
-            # FIXME - make the key user configurable
+            # Get all known info about this instance
+            rdata = self.facts_from_vobj(instance)
+
+            # FIXME - make the key user configurable based on rdata
             inv_key = instance.config.name + '_' + instance.config.uuid
 
-
-
-            ## CONFIG
-            iconfig = instance.summary.config
+            # Put it in the inventory
             if not inv_key in inventory['all']['hosts']:
                 inventory['all']['hosts'].append(inv_key)
-                inventory['_meta']['hostvars'][inv_key] = {}
-                inventory['_meta']['hostvars'][inv_key]['summary'] = {}
-                inventory['_meta']['hostvars'][inv_key]['summary']['config'] = {}
+                inventory['_meta']['hostvars'][inv_key] = rdata
 
-
-                # summary.config ...
-                methods = dir(iconfig)
-                methods = [x for x in methods if not x.startswith('_')]
-                for method in methods:
-                    methodToCall = getattr(iconfig, method)
-                    #import epdb; epdb.st()
-                    if hasattr(methodToCall, '__call__'):
-                        method_data = methodToCall()
-                        #print(method_data)
-                        #import epdb; epdb.st()
-                    else:
-                        if type(methodToCall) in [int, bool, str]:
-                            inventory['_meta']['hostvars'][inv_key]['summary']['config'][method] = methodToCall
-                        #else:    
-                        #    print(methodToCall)
-                        #    import epdb; epdb.st()
-
-        import epdb; epdb.st()
+        #import pprint; pprint.pprint(inventory)
 	return inventory
 
 
-    ###################################################
-    # OLD ...
-    ###################################################
+    def facts_from_vobj(self, vobj, rdata={}, level=0):
+
+        if level > self.maxlevel:
+            return rdata
+
+        bad_types = ['Array']
+        safe_types = [int, bool, str, float]
+        iter_types = [dict, list]
+
+        methods = dir(vobj)
+        methods = [str(x) for x in methods if not x.startswith('_')]
+        methods = [x for x in methods if not x in bad_types]
+
+        for method in methods:
+
+            if method in rdata:
+                continue
+
+            methodToCall = getattr(vobj, method)
+            method = method.lower()
+
+            # Store if type is a primitive
+            if type(methodToCall) in safe_types:
+                try:
+                    rdata[method] = methodToCall
+                except Exception as e:
+                    print(e)
+                    import epdb; epdb.st()
+
+            # Objects usually have a dict property
+            elif hasattr(methodToCall, '__dict__'):
+
+                # the dicts will have objects for values, get rid of those
+                safe_dict = {}
+
+                for k,v in methodToCall.__dict__.iteritems():
+
+                    # Try not to recurse into self
+                    if hasattr(v, '__name__'):
+                        if v.__name__ == 'VMWareInventory':
+                            continue                     
+
+                    # Skip private methods
+                    if k.startswith('_'):
+                        continue
+
+                    # Make all keys lower                        
+                    k = k.lower()
+
+                    if type(v) in safe_types:
+                        safe_dict[k] = v    
+                    elif not v:
+                        pass    
+                    elif type(v) in iter_types:
+                        pass
+                    else:
+
+                        # Recurse through this method to get deeper data
+                        if level < self.maxlevel:
+                            vdata = None
+                            vdata = self.facts_from_vobj(methodToCall, level=(level+1))
+
+                            if method not in rdata:
+                                rdata[method] = {}
+
+                            for vk, vv in vdata.iteritems():
+                                vk = vk.lower()
+                                if method not in rdata[method]:
+                                     rdata[method][vk] = None
+                                if vk not in rdata[method]:
+                                    safe_dict[vk] = vv
+                        
+                if safe_dict:        
+                    try:
+                        rdata[method] = safe_dict
+                    except Exception as e:
+                        print(e)
+                        import epdb; epdb.st()
+                        pass
+
+        return rdata
 
 
-    def PrintVmInfo(vm, depth=1):
-       """
-       Print information for a particular virtual machine or recurse into a folder
-        with depth protection
-       """
-       maxdepth = 10
-
-       # if this is a group it will have children. if it does, recurse into them
-       # and then return
-       if hasattr(vm, 'childEntity'):
-          if depth > maxdepth:
-             return
-          vmList = vm.childEntity
-          for c in vmList:
-             PrintVmInfo(c, depth+1)
-          return
-
-       #import epdb; epdb.st()
-       summary = vm.summary
-       print("Name       : ", summary.config.name)
-       print("Path       : ", summary.config.vmPathName)
-       print("Guest      : ", summary.config.guestFullName)
-       annotation = summary.config.annotation
-       if annotation != None and annotation != "":
-          print("Annotation : ", annotation)
-       print("State      : ", summary.runtime.powerState)
-       print("UUID       : ", vm.config.uuid)
-       if summary.guest != None:
-          ip = summary.guest.ipAddress
-          if ip != None and ip != "":
-             print("IP         : ", ip)
-       if summary.runtime.question != None:
-          print("Question  : ", summary.runtime.question.text)
-       print("")
-
-
-    def main():
-       """
-       Simple command-line program for listing the virtual machines on a system.
-       """
-
-       args = GetArgs()
-       if args.password:
-          password = args.password
-       else:
-          password = getpass.getpass(prompt='Enter password for host %s and '
-                                            'user %s: ' % (args.host,args.user))
-
-
-       context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
-       context.verify_mode = ssl.CERT_NONE
-       si = SmartConnect(host=args.host,
-                         user=args.user,
-                         pwd=password,
-                         port=int(args.port),
-                         sslContext=context)
-       if not si:
-           print("Could not connect to the specified host using specified "
-                 "username and password")
-           return -1
-
-       atexit.register(Disconnect, si)
-
-       content = si.RetrieveContent()
-       for child in content.rootFolder.childEntity:
-          if hasattr(child, 'vmFolder'):
-             datacenter = child
-             vmFolder = datacenter.vmFolder
-             vmList = vmFolder.childEntity
-             for vm in vmList:
-                PrintVmInfo(vm)
-       return 0
 
 # Run the script
 VMWareInventory()
