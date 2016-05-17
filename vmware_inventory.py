@@ -1,5 +1,13 @@
 #!/usr/bin/env python
 
+# TODO:
+#   * unit tests
+#   * docstrings in all functions
+#   * more jq examples
+#   * finish caching
+#   * create groups + user templates
+#   * user defined object filters
+
 """
 $ jq '._meta.hostvars[].config' data.json | head
 {
@@ -73,7 +81,7 @@ class VMWareInventory(object):
 
         # Data to print
         if self.args.host:
-            data_to_print = self.get_host_info()
+            data_to_print = self.get_host_info(self.args.host)
 
         elif self.args.list:
             # Display list of instances for inventory
@@ -81,7 +89,7 @@ class VMWareInventory(object):
                 data_to_print = self.get_inventory_from_cache()
             else:
                 data_to_print = json.dumps(self.inventory, indent=2)
-        print(data_to_print)
+        print(json.dumps(data_to_print, indent=2))
 
 
     def is_cache_valid(self):
@@ -350,6 +358,8 @@ class VMWareInventory(object):
 
         return rdata
 
+    def get_host_info(self, host):
+        return self.inventory['_meta']['hostvars'][host]
 
 
 # Run the script
