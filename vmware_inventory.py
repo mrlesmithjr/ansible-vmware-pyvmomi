@@ -124,7 +124,7 @@ class VMWareInventory(object):
 			'cache_path': '~/.ansible/tmp',
 			'cache_max_age': 300,
                         'max_object_level': 0,
-                        'name_pattern': '{{ config.name }}',
+                        'alias_pattern': '{{ config.name }}',
                         'host_pattern': '{{ guest.ipaddress }}',
                         'lower_var_keys': True }
 		   }
@@ -232,21 +232,19 @@ class VMWareInventory(object):
 
         # Make a map of the uuid to the name the user wants
         name_mapping = self.create_template_mapping(inventory, 
-                            self.config.get('vmware', 'name_pattern'))
+                            self.config.get('vmware', 'alias_pattern'))
 
         host_mapping = self.create_template_mapping(inventory,
                             self.config.get('vmware', 'host_pattern'))
 
-        import epdb; epdb.st()
         # Reset the inventory keys
         for k,v in name_mapping.iteritems():
+
+            # set ansible_host
+            inventory['_meta']['hostvars'][k]['ansible_host'] = host_mapping[k]
+
             if k == v:
                 continue
-            if not v:
-                continue            
-
-            #import epdb; epdb.st()
-            #assert v not  in inventory['all']['hosts'], "%s is already in use" % v
 
             # add new key
             inventory['all']['hosts'].append(v)
