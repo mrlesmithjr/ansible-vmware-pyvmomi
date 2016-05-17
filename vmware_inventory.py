@@ -143,7 +143,7 @@ class VMWareInventory(object):
 			'ini_path': os.path.join(os.path.dirname(os.path.realpath(__file__)), 'vmware_inventory.ini'),
 			'cache_name': 'ansible-vmware',
 			'cache_path': '~/.ansible/tmp',
-			'cache_max_age': 300,
+			'cache_max_age': 3600,
                         'max_object_level': 0,
                         'alias_pattern': '{{ config.name + "_" + config.uuid }}',
                         'host_pattern': '{{ guest.ipaddress }}',
@@ -185,7 +185,13 @@ class VMWareInventory(object):
 
 	# behavior control
 	self.maxlevel = int(config.get('vmware', 'max_object_level'))
-    	self.lowerkeys = bool(config.get('vmware', 'lower_var_keys'))
+    	self.lowerkeys = config.get('vmware', 'lower_var_keys')
+        if type(self.lowerkeys) != bool:
+            if str(self.lowerkeys).lower() in ['yes', 'true', '1']
+                self.lowerkeys = True
+            else:    
+                self.lowerkeys = False
+
         self.host_filters = list(config.get('vmware', 'host_filters').split(','))
         self.groupby_patterns = list(config.get('vmware', 'groupby_patterns').split(','))
 
