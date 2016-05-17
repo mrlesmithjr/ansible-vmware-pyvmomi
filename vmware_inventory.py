@@ -59,6 +59,7 @@ class VMWareInventory(object):
     username = None
     password = None
     host_filters = []
+    groupby_patterns = []
 
 
     def _empty_inventory(self):
@@ -148,6 +149,7 @@ class VMWareInventory(object):
                         'alias_pattern': '{{ config.name + "_" + config.uuid }}',
                         'host_pattern': '{{ guest.ipaddress }}',
                         'host_filters': '{{ guest.gueststate == "running" }}',
+                        'groupby_patterns': '{{ guest.guestid }},{{ "template" if config.template else "not_template"}}',
                         'lower_var_keys': True }
 		   }
 
@@ -174,7 +176,8 @@ class VMWareInventory(object):
         self.cache_path_index = self.cache_dir + "/%s.index" % cache_name
         self.cache_max_age = int(config.getint('vmware', 'cache_max_age'))
 
-	# mark the connection info
+	# mark the connection info 
+        # FIXME - use environment vars ...
         self.server = config.get('vmware', 'server')
         self.port = int(config.get('vmware', 'port'))
         self.username = config.get('vmware', 'username')
@@ -184,6 +187,7 @@ class VMWareInventory(object):
 	self.maxlevel = int(config.get('vmware', 'max_object_level'))
     	self.lowerkeys = bool(config.get('vmware', 'lower_var_keys'))
         self.host_filters = list(config.get('vmware', 'host_filters').split(','))
+        self.groupby_patterns = list(config.get('vmware', 'groupby_patterns').split(','))
 
         self.config = config    
 
@@ -283,14 +287,26 @@ class VMWareInventory(object):
             inventory['_meta']['hostvars'].pop(k, None)
 
         # Apply host filters
-        print(self.host_filters)
         for hf in self.host_filters:
+            if not hf:
+                continue
             filter_map = self.create_template_mapping(inventory, hf, dtype='boolean')
             for k,v in filter_map.iteritems():
                 if not v:
                     # delete this host
                     inventory['all']['hosts'].remove(k)
                     inventory['_meta']['hostvars'].pop(k, None)
+
+        # Create groups
+        for gbp in self.groupby_patterns:
+            print(gbp)
+            groupby_map = self.create_template_mapping(inventory, gbp)
+            for k,v in groupby_map.iteritems():
+                if v not in inventory:
+                    inventory[v] = {}
+                    inventory[v]['hosts'] = []
+                if k not in inventory[v]['hosts']:
+                    inventory[v]['hosts'].append(k)    
 
 	return inventory
 
@@ -339,7 +355,12 @@ class VMWareInventory(object):
             if method in rdata:
                 continue
 
-            methodToCall = getattr(vobj, method)
+            # Attempt to get the method, skip on fail
+            try:
+                methodToCall = getattr(vobj, method)
+            except Exception as e:
+                continue
+
             if self.lowerkeys:
                 method = method.lower()
 
