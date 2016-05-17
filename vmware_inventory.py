@@ -73,13 +73,14 @@ class VMWareInventory(object):
         self.parse_cli_args()
         self.read_settings()
 
-        # Cache
-        if self.args.refresh_cache:
-            self.do_api_calls_update_cache()
-        elif not self.is_cache_valid():
-            self.do_api_calls_update_cache()
+        # Check the cache
+        cache_valid = self.is_cache_valid()
 
-        #import epdb; epdb.st()
+        # Handle Cache
+        if self.args.refresh_cache or not cache_valid:
+            self.do_api_calls_update_cache()
+        else:
+            self.inventory = self.get_inventory_from_cache()
 
         # Data to print
         if self.args.host:
@@ -88,34 +89,47 @@ class VMWareInventory(object):
             # Display list of instances for inventory
             data_to_print = self.inventory
         print(json.dumps(data_to_print, indent=2))
+        print("CACHE_VALID: %s" % cache_valid)
 
 
     def is_cache_valid(self):
+
         ''' Determines if the cache files have expired, or if it is still valid '''
 
         if os.path.isfile(self.cache_path_cache):
             mod_time = os.path.getmtime(self.cache_path_cache)
             current_time = time()
             if (mod_time + self.cache_max_age) > current_time:
-                if os.path.isfile(self.cache_path_index):
-                    return True
+                return True
 
         return False
 
-    def write_to_cache(self, data, cache_path):
-        with open(self.cache_path_cache, 'wb') as f:
-            f.write(json.dumps(data))
 
     def do_api_calls_update_cache(self):
+
+        ''' Get instances and cache the data '''
+
         instances = self.get_instances()
 	self.inventory = self.instances_to_inventory(instances)
         self.write_to_cache(self.inventory, self.cache_path_cache)
 
+
+    def write_to_cache(self, data, cache_path):
+
+        ''' Dump inventory to json file '''
+
+        with open(self.cache_path_cache, 'wb') as f:
+            f.write(json.dumps(data))
+
+
     def get_inventory_from_cache(self):
+
+        ''' Read in jsonified inventory '''
+
         jdata = None
         with open(self.cache_path_cache, 'rb') as f:
             jdata = f.read()
-        self.inventory = json.loads(jdata)
+        return json.loads(jdata)
 
 
     def read_settings(self):
@@ -271,6 +285,8 @@ class VMWareInventory(object):
 
     def create_template_mapping(self, inventory, pattern):
 
+        ''' Return a hash of uuid to templated string from pattern '''
+
         mapping = {}
         for k,v in inventory['_meta']['hostvars'].iteritems():
             t = jinja2.Template(pattern)
@@ -280,8 +296,9 @@ class VMWareInventory(object):
         return mapping
 
 
-
     def facts_from_vobj(self, vobj, level=0):
+
+        ''' Traverse a VM object and return a json compliant data structure '''
 
         rdata = {}
 
