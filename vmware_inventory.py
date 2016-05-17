@@ -133,14 +133,19 @@ class VMWareInventory(object):
 
 
     def read_settings(self):
+
         ''' Reads the settings from the vmware_inventory.ini file '''
+
+        scriptbasename = os.path.realpath(__file__)
+        scriptbasename = os.path.basename(scriptbasename)
+        scriptbasename = scriptbasename.replace('.py', '')
 
 	defaults = {'vmware': {
 			'server': '',
 			'port': 443,
 			'username': '',
 			'password': '',
-			'ini_path': os.path.join(os.path.dirname(os.path.realpath(__file__)), 'vmware_inventory.ini'),
+			'ini_path': os.path.join(os.path.dirname(os.path.realpath(__file__)), '%s.ini' % scriptbasename),
 			'cache_name': 'ansible-vmware',
 			'cache_path': '~/.ansible/tmp',
 			'cache_max_age': 3600,
@@ -187,7 +192,7 @@ class VMWareInventory(object):
 	self.maxlevel = int(config.get('vmware', 'max_object_level'))
     	self.lowerkeys = config.get('vmware', 'lower_var_keys')
         if type(self.lowerkeys) != bool:
-            if str(self.lowerkeys).lower() in ['yes', 'true', '1']
+            if str(self.lowerkeys).lower() in ['yes', 'true', '1']:
                 self.lowerkeys = True
             else:    
                 self.lowerkeys = False
