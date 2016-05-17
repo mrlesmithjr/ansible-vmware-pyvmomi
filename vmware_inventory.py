@@ -5,6 +5,7 @@
 #   * docstrings in all functions
 #   * more jq examples
 #   * create user defined groupby
+#   * optional folder heirarchy 
 
 """
 $ jq '._meta.hostvars[].config' data.json | head
@@ -144,7 +145,7 @@ class VMWareInventory(object):
 			'cache_path': '~/.ansible/tmp',
 			'cache_max_age': 300,
                         'max_object_level': 0,
-                        'alias_pattern': '{{ config.name }}',
+                        'alias_pattern': '{{ config.name + "_" + config.uuid }}',
                         'host_pattern': '{{ guest.ipaddress }}',
                         'host_filters': '{{ guest.gueststate == "running" }}',
                         'lower_var_keys': True }
