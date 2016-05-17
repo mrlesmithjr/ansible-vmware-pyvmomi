@@ -22,6 +22,7 @@ import getpass
 import os
 import six
 import ssl
+import uuid
 
 from pyVim.connect import SmartConnect, Disconnect
 from six.moves import configparser
@@ -122,6 +123,8 @@ class VMWareInventory(object):
 			'cache_path': '~/.ansible/tmp',
 			'cache_max_age': 300,
                         'max_object_level': 0,
+                        'name_pattern': '{{ name + \'_\' + uuid }}',
+                        'sshhost_pattern': '{{ guest.ipaddress }}',
                         'lower_var_keys': True }
 		   }
 
@@ -212,16 +215,16 @@ class VMWareInventory(object):
         inventory['all']['hosts'] = []
         for instance in instances:
 
+            thisid = str(uuid.uuid4())
+
             # Get all known info about this instance
             rdata = self.facts_from_vobj(instance)
 
-            # FIXME - make the key user configurable based on rdata
-            inv_key = instance.config.name + '_' + instance.config.uuid
-
             # Put it in the inventory
-            if not inv_key in inventory['all']['hosts']:
-                inventory['all']['hosts'].append(inv_key)
-                inventory['_meta']['hostvars'][inv_key] = rdata
+            inventory['all']['hosts'].append(thisid)
+            inventory['_meta']['hostvars'][thisid] = rdata
+
+        # FIXME - make the key user configurable based on rdata
 
         #import pprint; pprint.pprint(inventory)
 	return inventory
