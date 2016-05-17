@@ -19,6 +19,7 @@ from __future__ import print_function
 import argparse
 import atexit
 import getpass
+import jinja2
 import os
 import six
 import ssl
@@ -123,8 +124,8 @@ class VMWareInventory(object):
 			'cache_path': '~/.ansible/tmp',
 			'cache_max_age': 300,
                         'max_object_level': 0,
-                        'name_pattern': '{{ name + \'_\' + uuid }}',
-                        'sshhost_pattern': '{{ guest.ipaddress }}',
+                        'name_pattern': '{{ config.name }}',
+                        'host_pattern': '{{ guest.ipaddress }}',
                         'lower_var_keys': True }
 		   }
 
@@ -213,24 +214,67 @@ class VMWareInventory(object):
 	inventory = self._empty_inventory()
         inventory['all'] = {}
         inventory['all']['hosts'] = []
+        last_idata = None
         for instance in instances:
 
+            #print(instance.guest.ipAddress)
+
             thisid = str(uuid.uuid4())
+            idata = {}
 
             # Get all known info about this instance
-            rdata = self.facts_from_vobj(instance)
+            idata = self.facts_from_vobj(instance)
 
             # Put it in the inventory
             inventory['all']['hosts'].append(thisid)
-            inventory['_meta']['hostvars'][thisid] = rdata
+            inventory['_meta']['hostvars'][thisid] = idata.copy()
+            inventory['_meta']['hostvars'][thisid]['ansible_uuid'] = thisid
 
-        # FIXME - make the key user configurable based on rdata
+        # Make a map of the uuid to the name the user wants
+        name_mapping = self.create_template_mapping(inventory, 
+                            self.config.get('vmware', 'name_pattern'))
+
+        host_mapping = self.create_template_mapping(inventory,
+                            self.config.get('vmware', 'host_pattern'))
+
+        import epdb; epdb.st()
+        # Reset the inventory keys
+        for k,v in name_mapping.iteritems():
+            if k == v:
+                continue
+            if not v:
+                continue            
+
+            #import epdb; epdb.st()
+            #assert v not  in inventory['all']['hosts'], "%s is already in use" % v
+
+            # add new key
+            inventory['all']['hosts'].append(v)
+            inventory['_meta']['hostvars'][v] = inventory['_meta']['hostvars'][k]
+
+            # cleanup
+            inventory['all']['hosts'].remove(k)
+            inventory['_meta']['hostvars'].pop(k, None)
 
         #import pprint; pprint.pprint(inventory)
 	return inventory
 
 
-    def facts_from_vobj(self, vobj, rdata={}, level=0):
+    def create_template_mapping(self, inventory, pattern):
+
+        mapping = {}
+        for k,v in inventory['_meta']['hostvars'].iteritems():
+            t = jinja2.Template(pattern)
+            newkey = t.render(v)
+            newkey = newkey.strip()
+            mapping[k] = newkey
+        return mapping
+
+
+
+    def facts_from_vobj(self, vobj, level=0):
+
+        rdata = {}
 
         if level > self.maxlevel:
             return rdata
@@ -251,6 +295,7 @@ class VMWareInventory(object):
             methodToCall = getattr(vobj, method)
             if self.lowerkeys:
                 method = method.lower()
+
 
             # Store if type is a primitive
             if type(methodToCall) in safe_types:
@@ -293,17 +338,10 @@ class VMWareInventory(object):
                             vdata = None
                             vdata = self.facts_from_vobj(methodToCall, level=(level+1))
 
-                            if method not in rdata:
-                                rdata[method] = {}
-
                             for vk, vv in vdata.iteritems():
                                 if self.lowerkeys:
                                     vk = vk.lower()
-                                if method not in rdata[method]:
-                                     rdata[method][vk] = None
-                                if vk not in rdata[method]:
-                                    safe_dict[vk] = vv
-                        
+                                safe_dict[vk] = vv
                 if safe_dict:        
                     try:
                         rdata[method] = safe_dict
