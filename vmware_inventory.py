@@ -7,6 +7,7 @@
 #   * finish caching
 #   * create groups + user templates
 #   * user defined object filters
+#       - state: poweredon
 
 """
 $ jq '._meta.hostvars[].config' data.json | head
@@ -31,11 +32,13 @@ import jinja2
 import os
 import six
 import ssl
+from time import time
 import uuid
 
+from collections import defaultdict
 from pyVim.connect import SmartConnect, Disconnect
 from six.moves import configparser
-from collections import defaultdict
+from time import time
 
 try:
     import json
@@ -65,7 +68,6 @@ class VMWareInventory(object):
 
     def __init__(self):
         self.inventory = self._empty_inventory()
-        self.index = {}
 
         # Read settings and parse CLI arguments
         self.parse_cli_args()
@@ -82,13 +84,9 @@ class VMWareInventory(object):
         # Data to print
         if self.args.host:
             data_to_print = self.get_host_info(self.args.host)
-
         elif self.args.list:
             # Display list of instances for inventory
-            if self.inventory == self._empty_inventory():
-                data_to_print = self.get_inventory_from_cache()
-            else:
-                data_to_print = json.dumps(self.inventory, indent=2)
+            data_to_print = self.inventory
         print(json.dumps(data_to_print, indent=2))
 
 
@@ -104,19 +102,20 @@ class VMWareInventory(object):
 
         return False
 
-    def write_to_cache(self, index, cache_path):
-        pass
+    def write_to_cache(self, data, cache_path):
+        with open(self.cache_path_cache, 'wb') as f:
+            f.write(json.dumps(data))
 
     def do_api_calls_update_cache(self):
         instances = self.get_instances()
-        #import epdb; epdb.st()
 	self.inventory = self.instances_to_inventory(instances)
-	#import epdb; epdb.st()
         self.write_to_cache(self.inventory, self.cache_path_cache)
-        self.write_to_cache(self.index, self.cache_path_index)
 
     def get_inventory_from_cache(self):
-        pass
+        jdata = None
+        with open(self.cache_path_cache, 'rb') as f:
+            jdata = f.read()
+        self.inventory = json.loads(jdata)
 
 
     def read_settings(self):
@@ -219,14 +218,17 @@ class VMWareInventory(object):
 
 
     def instances_to_inventory(self, instances):
+
+        ''' Convert a list of vm objects into a json compliant inventory '''
+
 	inventory = self._empty_inventory()
         inventory['all'] = {}
         inventory['all']['hosts'] = []
         last_idata = None
         for instance in instances:
-
-            #print(instance.guest.ipAddress)
-
+    
+            # make a unique id for this object to avoid vmware's
+            # numerous uuid's which aren't all unique.
             thisid = str(uuid.uuid4())
             idata = {}
 
@@ -248,8 +250,10 @@ class VMWareInventory(object):
         # Reset the inventory keys
         for k,v in name_mapping.iteritems():
 
-            # set ansible_host
+            # set ansible_host (2.x)
             inventory['_meta']['hostvars'][k]['ansible_host'] = host_mapping[k]
+            # 1.9.x backwards compliance
+            inventory['_meta']['hostvars'][k]['ansible_ssh_host'] = host_mapping[k]
 
             if k == v:
                 continue
@@ -258,11 +262,10 @@ class VMWareInventory(object):
             inventory['all']['hosts'].append(v)
             inventory['_meta']['hostvars'][v] = inventory['_meta']['hostvars'][k]
 
-            # cleanup
+            # cleanup old key
             inventory['all']['hosts'].remove(k)
             inventory['_meta']['hostvars'].pop(k, None)
 
-        #import pprint; pprint.pprint(inventory)
 	return inventory
 
 
@@ -342,7 +345,8 @@ class VMWareInventory(object):
                         # Recurse through this method to get deeper data
                         if level < self.maxlevel:
                             vdata = None
-                            vdata = self.facts_from_vobj(methodToCall, level=(level+1))
+                            vdata = self.facts_from_vobj(methodToCall, 
+                                                        level=(level+1))
 
                             for vk, vv in vdata.iteritems():
                                 if self.lowerkeys:
