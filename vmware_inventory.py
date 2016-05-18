@@ -40,16 +40,27 @@ from pyVmomi import vim
 from six.moves import configparser
 from time import time
 
+
 try:
     import json
 except ImportError:
     import simplejson as json
+
+hasvcr = False
+try:
+    import vcr
+    hasvcr = True
+except ImportError:
+    pass
 
 
 class VMWareInventory(object):
 
     __name__ = 'VMWareInventory'
 
+    debug = False
+    load_dumpfile = None
+    write_dumpfile = None
     maxlevel = 1
     lowerkeys = True
     config = None
@@ -90,6 +101,10 @@ class VMWareInventory(object):
             else:
                 self.inventory = self.get_inventory_from_cache()
 
+    def debugl(self, text):
+        if self.args.debug:
+            print(text)
+
     def show(self):
         # Data to print
         data_to_print = None
@@ -121,6 +136,7 @@ class VMWareInventory(object):
         ''' Get instances and cache the data '''
 
         instances = self.get_instances()
+	self.instances = instances
 	self.inventory = self.instances_to_inventory(instances)
         self.write_to_cache(self.inventory, self.cache_path_cache)
 
@@ -220,12 +236,10 @@ class VMWareInventory(object):
         ''' Command line argument processing '''
 
         parser = argparse.ArgumentParser(description='Produce an Ansible Inventory file based on PyVmomi')
-        parser.add_argument('--debug', action='store_true', default=True,
+        parser.add_argument('--debug', action='store_true', default=False,
                            help='show debug info')
-        parser.add_argument('--write_dumpfile', action='store', default=None,
-                           help='pickle raw api data to this file (for troubleshooting)')
-        parser.add_argument('--load_dumpfile', action='store', default=None,
-                           help='load inventory from this pickle file (for troubleshooting)')
+        parser.add_argument('--usevcr', action='store_true', default=None,
+                           help='use python-vcr to store pysphere data to yaml (for troubleshooting)')
         parser.add_argument('--list', action='store_true', default=True,
                            help='List instances (default: True)')
         parser.add_argument('--host', action='store',
@@ -254,6 +268,59 @@ class VMWareInventory(object):
         	context.verify_mode = ssl.CERT_NONE
 		kwargs['sslContext'] = context
 
+	if self.args.usevcr and not os.path.isdir('fixtures'):
+	    os.makedirs('fixtures')
+
+	if self.args.usevcr and hasvcr and os.path.isfile('fixtures/get_instances.yaml'):
+	    self.debugl("### RUNNING IN VCR PLAY MODE")
+            instances = self._get_instances_with_vcr_play(kwargs)
+	elif self.args.usevcr and hasvcr and not os.path.isfile('fixtures/get_instances.yaml'):
+	    self.debugl("### RUNNING IN VCR RECORD MODE")
+            instances = self._get_instances_with_vcr_record(kwargs)
+	else:
+	    self.debugl("### RUNNING WITHOUT VCR")
+            instances = self._get_instances(kwargs)
+
+	return instances
+
+
+    def _get_instances(self, inkwargs):
+
+	instances = []
+
+        si = SmartConnect(**inkwargs)
+
+        if not si:
+            print("Could not connect to the specified host using specified "
+                "username and password")
+            return -1
+
+        atexit.register(Disconnect, si)
+
+        content = si.RetrieveContent()
+        for child in content.rootFolder.childEntity:
+            if hasattr(child, 'vmFolder'):
+                datacenter = child
+                vmFolder = datacenter.vmFolder
+                vmList = vmFolder.childEntity
+                for vm in vmList:
+                    if hasattr(vm, 'childEntity'):
+                        vmList = vm.childEntity
+                        for c in vmList:
+                            instances.append(c)
+                    else:
+                        instances.append(vm)
+
+        return instances
+
+
+    @vcr.use_cassette('get_instances.yaml',
+                      cassette_library_dir='fixtures',
+                      record_mode='once')
+    def _get_instances_with_vcr_record(self, kwargs):
+
+	instances = []
+
         si = SmartConnect(**kwargs)
 
         if not si:
@@ -276,6 +343,44 @@ class VMWareInventory(object):
                             instances.append(c)
                     else:
                         instances.append(vm)
+
+	# in record mode, we need to make all possible api calls
+	for instance in instances:
+            self.facts_from_vobj(instance)
+
+        return instances
+
+
+    @vcr.use_cassette('get_instances.yaml',
+                      cassette_library_dir='fixtures',
+                      record_mode='never')
+    def _get_instances_with_vcr_play(self, kwargs):
+
+	instances = []
+
+        si = SmartConnect(**kwargs)
+
+        if not si:
+            print("Could not connect to the specified host using specified "
+                "username and password")
+            return -1
+
+        atexit.register(Disconnect, si)
+
+        content = si.RetrieveContent()
+        for child in content.rootFolder.childEntity:
+            if hasattr(child, 'vmFolder'):
+                datacenter = child
+                vmFolder = datacenter.vmFolder
+                vmList = vmFolder.childEntity
+                for vm in vmList:
+                    if hasattr(vm, 'childEntity'):
+                        vmList = vm.childEntity
+                        for c in vmList:
+                            instances.append(c)
+                    else:
+                        instances.append(vm)
+
         return instances
 
 
