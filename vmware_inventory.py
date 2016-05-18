@@ -62,6 +62,11 @@ class VMWareInventory(object):
     host_filters = []
     groupby_patterns = []
 
+    bad_types = ['Array']
+    safe_types = [int, long, bool, str, float, None]
+    iter_types = [dict, list]
+    skip_keys = ['dynamicproperty', 'dynamictype', 'managedby', 'childtype']
+
 
     def _empty_inventory(self):
         return {"_meta" : {"hostvars" : {}}}
@@ -438,6 +443,7 @@ class VMWareInventory(object):
                     except Exception as e:
                         pass
 
+
                 # Store if type is a primitive
                 if type(methodToCall) in safe_types:
                     try:
@@ -472,6 +478,36 @@ class VMWareInventory(object):
                 elif vstr:
                     rdata[method] = vstr
 
+        return rdata
+
+
+    def _process_object_types(self, vobj, level=0):
+        rdata = {}
+        if hasattr(vobj, 'append'):
+            rdata = []
+            for vi in vobj:
+                if type(vi) in self.safe_types:
+                    rdata.append(vi)
+                else:
+		    if (level+1 <= self.maxlevel):
+			vid = self.facts_from_vobj(vi, level=(level+1))
+			if vid:
+			    rdata.append(vid)
+
+        elif hasattr(vobj, '__dict__'):
+	    if (level+1 <= self.maxlevel):
+		md = None
+		md = self.facts_from_vobj(vobj, level=(level+1))
+		if md:
+		    rdata = md
+        elif not vobj or type(vobj) in self.safe_types:
+            rdata = vobj
+        elif type(vobj) == datetime.datetime:
+            rdata = str(vobj)
+        else:
+            print("WHAT!")
+            import epdb; epdb.st()
+        #import epdb; epdb.st()    
         return rdata
 
 
