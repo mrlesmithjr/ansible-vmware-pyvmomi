@@ -268,9 +268,9 @@ class VMWareInventory(object):
             # make a unique id for this object to avoid vmware's
             # numerous uuid's which aren't all unique.
             thisid = str(uuid.uuid4())
-            idata = {}
 
             # Get all known info about this instance
+            idata = {}
             idata = self.facts_from_vobj(instance)
 
             # Put it in the inventory
@@ -366,7 +366,7 @@ class VMWareInventory(object):
         bad_types = ['Array']
         safe_types = [int, long, bool, str, float, None]
         iter_types = [dict, list]
-        skip_keys = ['dynamictype', 'managedby', 'childtype']
+        skip_keys = ['dynamicproperty', 'dynamictype', 'managedby', 'childtype']
 
         # Objects usually have a dict property
         if hasattr(vobj, '__dict__') and not level == 0:
@@ -383,7 +383,17 @@ class VMWareInventory(object):
                 if self.lowerkeys:
                     k = k.lower()
 
-                if hasattr(v, '__dict__'):
+                if hasattr(v, 'append'):
+                    rdata[k] = []
+                    for vi in v:
+                        if type(vi) in safe_types:
+                            rdata[k].append(vi)
+                        else:    
+                            vid = self.facts_from_vobj(vi, level=(level+1))
+                            if vid:
+                                rdata[k].append(vid)
+
+                elif hasattr(v, '__dict__'):
                     md = None
                     md = self.facts_from_vobj(v, level=(level+1))
                     if md:
@@ -419,6 +429,14 @@ class VMWareInventory(object):
 
                 if self.lowerkeys:
                     method = method.lower()
+    
+                # Attempt to stringify
+                vstr = None
+                if type(methodToCall) not in safe_types:
+                    try:
+                        vstr = str(methodToCall)
+                    except Exception as e:
+                        pass
 
                 # Store if type is a primitive
                 if type(methodToCall) in safe_types:
@@ -427,6 +445,19 @@ class VMWareInventory(object):
                     except Exception as e:
                         print(e)
                         import epdb; epdb.st()
+
+                elif hasattr(methodToCall, 'isalnum'):
+                    rdata[method] = str(methodToCall)
+
+                elif hasattr(methodToCall, 'append'):
+                    rdata[method] = []
+                    for vi in methodToCall:
+                        if type(vi) in safe_types:
+                            rdata[method].append(vi)
+                        else:    
+                            vid = self.facts_from_vobj(vi, level=(level+1))
+                            if vid:
+                                rdata[method].append(vid)
 
                 elif hasattr(methodToCall, '__dict__'):
                     if methodToCall.__dict__:
@@ -438,8 +469,11 @@ class VMWareInventory(object):
                                 print("HRM ... %s" % method)
                                 import epdb; epdb.st()
 
-        #import epdb; epdb.st()
+                elif vstr:
+                    rdata[method] = vstr
+
         return rdata
+
 
     def get_host_info(self, host):
         
