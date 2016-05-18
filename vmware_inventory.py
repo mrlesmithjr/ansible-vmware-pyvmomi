@@ -207,6 +207,7 @@ class VMWareInventory(object):
 
 
     def parse_cli_args(self):
+
         ''' Command line argument processing '''
 
         parser = argparse.ArgumentParser(description='Produce an Ansible Inventory file based on PyVmomi')
@@ -220,6 +221,9 @@ class VMWareInventory(object):
 
 
     def get_instances(self):
+
+        ''' Get a list of vm instances with pyvmomi '''
+
         instances = []        
         context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
         context.verify_mode = ssl.CERT_NONE
@@ -364,6 +368,7 @@ class VMWareInventory(object):
         iter_types = [dict, list]
         skip_keys = ['dynamictype', 'managedby', 'childtype']
 
+        # Objects usually have a dict property
         if hasattr(vobj, '__dict__') and not level == 0:
 
             for k,v in vobj.__dict__.iteritems():
@@ -423,7 +428,6 @@ class VMWareInventory(object):
                         print(e)
                         import epdb; epdb.st()
 
-                # Objects usually have a dict property
                 elif hasattr(methodToCall, '__dict__'):
                     if methodToCall.__dict__:
                         md = None
@@ -438,6 +442,9 @@ class VMWareInventory(object):
         return rdata
 
     def get_host_info(self, host):
+        
+        ''' Return hostvars for a single host '''
+
         return self.inventory['_meta']['hostvars'][host]
 
 
