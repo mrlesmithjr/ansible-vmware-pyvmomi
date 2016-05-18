@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import json
+import pickle
 import unittest
 
 from vmware_inventory import VMWareInventory
@@ -13,6 +14,8 @@ BASICINVENTORY = {'all': {'hosts': ['foo', 'bar']},
 
 class FakeArgs(object):
     debug = False
+    write_dumpfile = None
+    load_dumpfile = None
     host = False
     list = True
 

@@ -220,6 +220,12 @@ class VMWareInventory(object):
         ''' Command line argument processing '''
 
         parser = argparse.ArgumentParser(description='Produce an Ansible Inventory file based on PyVmomi')
+        parser.add_argument('--debug', action='store_true', default=True,
+                           help='show debug info')
+        parser.add_argument('--write_dumpfile', action='store', default=None,
+                           help='pickle raw api data to this file (for troubleshooting)')
+        parser.add_argument('--load_dumpfile', action='store', default=None,
+                           help='load inventory from this pickle file (for troubleshooting)')
         parser.add_argument('--list', action='store_true', default=True,
                            help='List instances (default: True)')
         parser.add_argument('--host', action='store',
