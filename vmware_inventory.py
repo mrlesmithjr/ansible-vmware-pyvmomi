@@ -5,6 +5,7 @@
 #   * docstrings in all functions
 #   * more jq examples
 #   * optional folder heirarchy 
+#   * find tag attributes and make groupby example
 
 """
 $ jq '._meta.hostvars[].config' data.json | head
@@ -24,6 +25,7 @@ from __future__ import print_function
 
 import argparse
 import atexit
+import datetime
 import getpass
 import jinja2
 import os
@@ -153,7 +155,7 @@ class VMWareInventory(object):
                         'alias_pattern': '{{ config.name + "_" + config.uuid }}',
                         'host_pattern': '{{ guest.ipaddress }}',
                         'host_filters': '{{ guest.gueststate == "running" }}',
-                        'groupby_patterns': '{{ guest.guestid }},{{ "template" if config.template else "not_template"}}',
+                        'groupby_patterns': '{{ guest.guestid }},{{ "templates" if config.template else "guests"}}',
                         'lower_var_keys': True }
 		   }
 
@@ -311,7 +313,6 @@ class VMWareInventory(object):
 
         # Create groups
         for gbp in self.groupby_patterns:
-            print(gbp)
             groupby_map = self.create_template_mapping(inventory, gbp)
             for k,v in groupby_map.iteritems():
                 if v not in inventory:
@@ -351,86 +352,89 @@ class VMWareInventory(object):
 
         rdata = {}
 
+        if hasattr(vobj, '__name__'):
+            if vobj.__name__ == 'VMWareInventory':
+                return rdata
+
         if level > self.maxlevel:
             return rdata
 
         bad_types = ['Array']
-        safe_types = [int, bool, str, float]
+        safe_types = [int, long, bool, str, float, None]
         iter_types = [dict, list]
+        skip_keys = ['dynamictype', 'managedby', 'childtype']
 
-        methods = dir(vobj)
-        methods = [str(x) for x in methods if not x.startswith('_')]
-        methods = [x for x in methods if not x in bad_types]
+        if hasattr(vobj, '__dict__') and not level == 0:
 
-        for method in methods:
+            for k,v in vobj.__dict__.iteritems():
 
-            if method in rdata:
-                continue
+                # Skip private methods
+                if k.startswith('_'):
+                    continue
 
-            # Attempt to get the method, skip on fail
-            try:
-                methodToCall = getattr(vobj, method)
-            except Exception as e:
-                continue
+                if k.lower() in skip_keys:
+                    continue
 
-            if self.lowerkeys:
-                method = method.lower()
+                if self.lowerkeys:
+                    k = k.lower()
 
-
-            # Store if type is a primitive
-            if type(methodToCall) in safe_types:
-                try:
-                    rdata[method] = methodToCall
-                except Exception as e:
-                    print(e)
+                if hasattr(v, '__dict__'):
+                    md = None
+                    md = self.facts_from_vobj(v, level=(level+1))
+                    if md:
+                        rdata[k] = md
+                elif not v or type(v) in safe_types:
+                    rdata[k] = v    
+                elif type(v) == datetime.datetime:    
+                    rdata[k] = str(v)
+                else:
+                    print("WHAT!")
                     import epdb; epdb.st()
 
-            # Objects usually have a dict property
-            elif hasattr(methodToCall, '__dict__'):
+        else:    
 
-                # the dicts will have objects for values, get rid of those
-                safe_dict = {}
+            methods = dir(vobj)
+            methods = [str(x) for x in methods if not x.startswith('_')]
+            methods = [x for x in methods if not x in bad_types]
 
-                for k,v in methodToCall.__dict__.iteritems():
+            for method in methods:
 
-                    # Try not to recurse into self
-                    if hasattr(v, '__name__'):
-                        if v.__name__ == 'VMWareInventory':
-                            continue                     
+                if method in rdata:
+                    continue
 
-                    # Skip private methods
-                    if k.startswith('_'):
-                        continue
+                # Attempt to get the method, skip on fail
+                try:
+                    methodToCall = getattr(vobj, method)
+                except Exception as e:
+                    continue
 
-                    if self.lowerkeys:
-                        k = k.lower()
+                # Skip callable methods
+                if callable(methodToCall):
+                    continue
 
-                    if type(v) in safe_types:
-                        safe_dict[k] = v    
-                    elif not v:
-                        pass    
-                    elif type(v) in iter_types:
-                        pass
-                    else:
+                if self.lowerkeys:
+                    method = method.lower()
 
-                        # Recurse through this method to get deeper data
-                        if level < self.maxlevel:
-                            vdata = None
-                            vdata = self.facts_from_vobj(methodToCall, 
-                                                        level=(level+1))
-
-                            for vk, vv in vdata.iteritems():
-                                if self.lowerkeys:
-                                    vk = vk.lower()
-                                safe_dict[vk] = vv
-                if safe_dict:        
+                # Store if type is a primitive
+                if type(methodToCall) in safe_types:
                     try:
-                        rdata[method] = safe_dict
+                        rdata[method] = methodToCall
                     except Exception as e:
                         print(e)
                         import epdb; epdb.st()
-                        pass
 
+                # Objects usually have a dict property
+                elif hasattr(methodToCall, '__dict__'):
+                    if methodToCall.__dict__:
+                        md = None
+                        md = self.facts_from_vobj(methodToCall, level=(level+1))
+                        if md:
+                            rdata[method] = md.copy()
+                            if not rdata[method]:
+                                print("HRM ... %s" % method)
+                                import epdb; epdb.st()
+
+        #import epdb; epdb.st()
         return rdata
 
     def get_host_info(self, host):
