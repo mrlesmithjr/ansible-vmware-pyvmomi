@@ -368,11 +368,6 @@ class VMWareInventory(object):
         if level > self.maxlevel:
             return rdata
 
-        bad_types = ['Array']
-        safe_types = [int, long, bool, str, float, None]
-        iter_types = [dict, list]
-        skip_keys = ['dynamicproperty', 'dynamictype', 'managedby', 'childtype']
-
         # Objects usually have a dict property
         if hasattr(vobj, '__dict__') and not level == 0:
 
@@ -382,40 +377,19 @@ class VMWareInventory(object):
                 if k.startswith('_'):
                     continue
 
-                if k.lower() in skip_keys:
+                if k.lower() in self.skip_keys:
                     continue
 
                 if self.lowerkeys:
                     k = k.lower()
 
-                if hasattr(v, 'append'):
-                    rdata[k] = []
-                    for vi in v:
-                        if type(vi) in safe_types:
-                            rdata[k].append(vi)
-                        else:    
-                            vid = self.facts_from_vobj(vi, level=(level+1))
-                            if vid:
-                                rdata[k].append(vid)
-
-                elif hasattr(v, '__dict__'):
-                    md = None
-                    md = self.facts_from_vobj(v, level=(level+1))
-                    if md:
-                        rdata[k] = md
-                elif not v or type(v) in safe_types:
-                    rdata[k] = v    
-                elif type(v) == datetime.datetime:    
-                    rdata[k] = str(v)
-                else:
-                    print("WHAT!")
-                    import epdb; epdb.st()
+		rdata[k] = self._process_object_types(v, level=level)
 
         else:    
 
             methods = dir(vobj)
             methods = [str(x) for x in methods if not x.startswith('_')]
-            methods = [x for x in methods if not x in bad_types]
+            methods = [x for x in methods if not x in self.bad_types]
 
             for method in methods:
 
@@ -434,56 +408,33 @@ class VMWareInventory(object):
 
                 if self.lowerkeys:
                     method = method.lower()
-    
-                # Attempt to stringify
-                vstr = None
-                if type(methodToCall) not in safe_types:
-                    try:
-                        vstr = str(methodToCall)
-                    except Exception as e:
-                        pass
 
-
-                # Store if type is a primitive
-                if type(methodToCall) in safe_types:
-                    try:
-                        rdata[method] = methodToCall
-                    except Exception as e:
-                        print(e)
-                        import epdb; epdb.st()
-
-                elif hasattr(methodToCall, 'isalnum'):
-                    rdata[method] = str(methodToCall)
-
-                elif hasattr(methodToCall, 'append'):
-                    rdata[method] = []
-                    for vi in methodToCall:
-                        if type(vi) in safe_types:
-                            rdata[method].append(vi)
-                        else:    
-                            vid = self.facts_from_vobj(vi, level=(level+1))
-                            if vid:
-                                rdata[method].append(vid)
-
-                elif hasattr(methodToCall, '__dict__'):
-                    if methodToCall.__dict__:
-                        md = None
-                        md = self.facts_from_vobj(methodToCall, level=(level+1))
-                        if md:
-                            rdata[method] = md.copy()
-                            if not rdata[method]:
-                                print("HRM ... %s" % method)
-                                import epdb; epdb.st()
-
-                elif vstr:
-                    rdata[method] = vstr
+		rdata[method] = self._process_object_types(methodToCall, level=level)
 
         return rdata
 
 
     def _process_object_types(self, vobj, level=0):
+
+	#import pprint; pprint.pprint(vobj)
+
         rdata = {}
-        if hasattr(vobj, 'append'):
+
+	vstr = None
+	if type(vobj) not in self.safe_types:
+	    try:
+		vstr = str(methodToCall)
+	    except Exception as e:
+		pass
+
+        if type(vobj) in self.safe_types:
+            try:
+                rdata = vobj
+            except Exception as e:
+		    print(e)
+		    import epdb; epdb.st()
+
+        elif hasattr(vobj, 'append'):
             rdata = []
             for vi in vobj:
                 if type(vi) in self.safe_types:
@@ -508,6 +459,8 @@ class VMWareInventory(object):
             print("WHAT!")
             import epdb; epdb.st()
         #import epdb; epdb.st()    
+	if not rdata:
+		rdata = None
         return rdata
 
 
