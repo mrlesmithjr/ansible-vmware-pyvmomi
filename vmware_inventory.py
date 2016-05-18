@@ -73,29 +73,32 @@ class VMWareInventory(object):
         return {"_meta" : {"hostvars" : {}}}
 
 
-    def __init__(self):
+    def __init__(self, load=True):
         self.inventory = self._empty_inventory()
 
-        # Read settings and parse CLI arguments
-        self.parse_cli_args()
-        self.read_settings()
+        if load:
+            # Read settings and parse CLI arguments
+            self.parse_cli_args()
+            self.read_settings()
 
-        # Check the cache
-        cache_valid = self.is_cache_valid()
+            # Check the cache
+            cache_valid = self.is_cache_valid()
 
-        # Handle Cache
-        if self.args.refresh_cache or not cache_valid:
-            self.do_api_calls_update_cache()
-        else:
-            self.inventory = self.get_inventory_from_cache()
+            # Handle Cache
+            if self.args.refresh_cache or not cache_valid:
+                self.do_api_calls_update_cache()
+            else:
+                self.inventory = self.get_inventory_from_cache()
 
+    def show(self):
         # Data to print
+        data_to_print = None
         if self.args.host:
             data_to_print = self.get_host_info(self.args.host)
         elif self.args.list:
             # Display list of instances for inventory
             data_to_print = self.inventory
-        print(json.dumps(data_to_print, indent=2))
+        return json.dumps(data_to_print, indent=2)
 
 
     def is_cache_valid(self):
@@ -485,8 +488,8 @@ class VMWareInventory(object):
 
         return self.inventory['_meta']['hostvars'][host]
 
-
-# Run the script
-VMWareInventory()
+if __name__ == "__main__":
+    # Run the script
+    print(VMWareInventory().show())
 
 
