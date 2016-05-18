@@ -230,13 +230,21 @@ class VMWareInventory(object):
         ''' Get a list of vm instances with pyvmomi '''
 
         instances = []        
-        context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
-        context.verify_mode = ssl.CERT_NONE
-        si = SmartConnect(host=self.server,
-                         user=self.username,
-                         pwd=self.password,
-                         port=int(self.port),
-                         sslContext=context)
+
+	kwargs = {'host': self.server,
+                  'user': self.username,
+                  'pwd': self.password,
+                  'port': int(self.port) }
+
+	if hasattr(ssl, 'SSLContext'):
+    		# context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+		# AttributeError: 'module' object has no attribute 'SSLContext'
+        	context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+        	context.verify_mode = ssl.CERT_NONE
+		kwargs['sslContext'] = context
+
+        si = SmartConnect(**kwargs)
+
         if not si:
             print("Could not connect to the specified host using specified "
                 "username and password")
