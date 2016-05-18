@@ -237,8 +237,9 @@ class VMWareInventory(object):
                   'port': int(self.port) }
 
 	if hasattr(ssl, 'SSLContext'):
-    		# context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
-		# AttributeError: 'module' object has no attribute 'SSLContext'
+		# older ssl libs do not have an SSLContext method:
+    		# 	context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+		# 	AttributeError: 'module' object has no attribute 'SSLContext'
         	context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
         	context.verify_mode = ssl.CERT_NONE
 		kwargs['sslContext'] = context
