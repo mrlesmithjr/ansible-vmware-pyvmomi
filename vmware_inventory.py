@@ -36,6 +36,7 @@ import uuid
 
 from collections import defaultdict
 from pyVim.connect import SmartConnect, Disconnect
+from pyVmomi import vim
 from six.moves import configparser
 from time import time
 
@@ -368,12 +369,17 @@ class VMWareInventory(object):
 
         ''' Traverse a VM object and return a json compliant data structure '''
 
+        # pyvmomi objects are not yet serializable, but may be one day ...
+        # https://github.com/vmware/pyvmomi/issues/21
+
         rdata = {}
 
+	# Do not serialize self
         if hasattr(vobj, '__name__'):
             if vobj.__name__ == 'VMWareInventory':
                 return rdata
 
+	# Exit early if maxlevel is reached
         if level > self.maxlevel:
             return rdata
 
