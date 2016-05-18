@@ -560,8 +560,7 @@ class VMWareInventory(object):
             try:
                 rdata = vobj
             except Exception as e:
-		    print(e)
-		    import epdb; epdb.st()
+                self.debugl(str(e))
 
         elif hasattr(vobj, 'append'):
             rdata = []
@@ -585,9 +584,8 @@ class VMWareInventory(object):
         elif type(vobj) == datetime.datetime:
             rdata = str(vobj)
         else:
-            print("WHAT!")
-            import epdb; epdb.st()
-        #import epdb; epdb.st()    
+            self.debugl("unknown datatype: %s" % type(vobj))
+
 	if not rdata:
 		rdata = None
         return rdata
