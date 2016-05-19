@@ -365,7 +365,8 @@ class VMWareInventory(object):
                 "username and password")
             return -1
 
-        atexit.register(Disconnect, si)
+        ## No need to disconnect in play mode??? (hangs)
+        #atexit.register(Disconnect, si)
 
         content = si.RetrieveContent()
         for child in content.rootFolder.childEntity:
@@ -539,7 +540,6 @@ class VMWareInventory(object):
                     method = method.lower()
 
 		rdata[method] = self._process_object_types(methodToCall, level=level)
-
         return rdata
 
 
